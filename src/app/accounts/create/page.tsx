@@ -17,7 +17,7 @@ export default function CreateAccountPage() {
   const [accountType, setAccountType] = useState<'OUTLIER' | 'HANDSHAKE'>('OUTLIER');
   const [browserType, setBrowserType] = useState<'IX_BROWSER' | 'GOLOGIN' | 'MORELOGIN'>('IX_BROWSER');
   const [hourlyRate, setHourlyRate] = useState('');
-  const [taskerId, setTaskerId] = useState<string>('');
+  const [taskerId, setTaskerId] = useState<string>('unassigned');
   const [taskers, setTaskers] = useState<any[]>([]);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -32,11 +32,7 @@ export default function CreateAccountPage() {
 
   const fetchTaskers = async () => {
     try {
-      const response = await fetch('/api/users', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetch('/api/users');
 
       if (response.ok) {
         const data = await response.json();
@@ -69,14 +65,14 @@ export default function CreateAccountPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
         },
+        credentials: 'include',
         body: JSON.stringify({
           accountName: accountName.trim(),
           accountType,
           browserType,
           hourlyRate: parseFloat(hourlyRate),
-          taskerId: taskerId || null,
+          taskerId: taskerId === 'unassigned' ? null : parseInt(taskerId),
         }),
       });
 
@@ -89,7 +85,7 @@ export default function CreateAccountPage() {
         setAccountType('OUTLIER');
         setBrowserType('IX_BROWSER');
         setHourlyRate('');
-        setTaskerId('');
+        setTaskerId('unassigned');
       } else {
         setError(data.error || 'Failed to create account');
       }
@@ -206,9 +202,9 @@ export default function CreateAccountPage() {
                       <SelectValue placeholder="Select a tasker (optional)" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Leave unassigned</SelectItem>
+                      <SelectItem value="unassigned">Leave unassigned</SelectItem>
                       {taskers.map((tasker) => (
-                        <SelectItem key={tasker.id} value={tasker.id}>
+                        <SelectItem key={tasker.id} value={tasker.id.toString()}>
                           {tasker.fullName} ({tasker.email})
                         </SelectItem>
                       ))}

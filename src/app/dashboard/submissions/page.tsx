@@ -72,9 +72,7 @@ export default function SubmissionsPage() {
     try {
       const endpoint = user?.role === 'TASKER' ? '/api/submissions/my' : '/api/submissions';
       const response = await fetch(endpoint, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        credentials: 'include',
       });
 
       if (response.ok) {
@@ -97,8 +95,8 @@ export default function SubmissionsPage() {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
         },
+        credentials: 'include',
         body: JSON.stringify({
           status,
           notes: reviewNotes || undefined,

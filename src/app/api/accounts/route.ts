@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { verifyToken } from '@/lib/auth';
 import { z } from 'zod';
 
 const createAccountSchema = z.object({
@@ -8,44 +7,15 @@ const createAccountSchema = z.object({
   accountType: z.enum(['OUTLIER', 'HANDSHAKE']),
   browserType: z.enum(['IX_BROWSER', 'GOLOGIN', 'MORELOGIN']),
   hourlyRate: z.number().min(0, 'Hourly rate must be positive'),
-  taskerId: z.string().optional(),
+  taskerId: z.number().nullable().optional(),
 });
-
-// Middleware to check if user is manager
-async function checkManagerRole(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return null;
-  }
-
-  const token = authHeader.substring(7);
-  const decoded = verifyToken(token);
-
-  if (decoded.role !== 'MANAGER') {
-    return null;
-  }
-
-  return decoded;
-}
-
-// Middleware to check if user is authenticated
-async function checkAuth(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return null;
-  }
-
-  const token = authHeader.substring(7);
-  return verifyToken(token);
-}
 
 export async function GET(request: NextRequest) {
   try {
-    const decoded = await checkAuth(request);
+    const userId = request.headers.get('x-user-id');
+    const userRole = request.headers.get('x-user-role');
     
-    if (!decoded) {
+    if (!userId) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -80,8 +50,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Taskers can only see their assigned accounts
-    if (decoded.role === 'TASKER') {
-      where.taskerId = decoded.userId;
+    if (userRole === 'TASKER') {
+      where.taskerId = parseInt(userId);
     }
 
     const accounts = await db.account.findMany({
@@ -119,9 +89,10 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const decoded = await checkManagerRole(request);
+    const userId = request.headers.get('x-user-id');
+    const userRole = request.headers.get('x-user-role');
     
-    if (!decoded) {
+    if (!userId || userRole !== 'MANAGER') {
       return NextResponse.json(
         { error: 'Unauthorized - Manager role required' },
         { status: 403 }
@@ -165,7 +136,7 @@ export async function POST(request: NextRequest) {
         browserType,
         hourlyRate,
         taskerId,
-        createdBy: decoded.userId,
+        createdBy: parseInt(userId),
       },
       include: {
         tasker: {

@@ -55,7 +55,22 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json(createAuthResponse(user));
+    const authData = createAuthResponse(user);
+    const response = NextResponse.json({
+      user: authData.user,
+      token: authData.token,
+    });
+    
+    // Set HttpOnly cookie
+    response.cookies.set('token', authData.token, {
+      httpOnly: true,
+      secure: false, // Set to true in production with HTTPS
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+      path: '/',
+    });
+    
+    return response;
   } catch (error) {
     console.error('Registration error:', error);
     

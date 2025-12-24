@@ -63,9 +63,7 @@ export default function AccountsPage() {
     try {
       const endpoint = user?.role === 'MANAGER' ? '/api/accounts' : '/api/accounts/my';
       const response = await fetch(endpoint, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -84,9 +82,7 @@ export default function AccountsPage() {
   const fetchTaskers = async () => {
     try {
       const response = await fetch('/api/users', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        credentials: 'include',
       });
 
       if (response.ok) {
@@ -134,8 +130,8 @@ export default function AccountsPage() {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
         },
+        credentials: 'include',
         body: JSON.stringify({ isActive: !currentStatus }),
       });
 
@@ -155,9 +151,9 @@ export default function AccountsPage() {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({ taskerId }),
+        credentials: 'include',
+        body: JSON.stringify({ taskerId: taskerId ? parseInt(taskerId) : null }),
       });
 
       if (!response.ok) {

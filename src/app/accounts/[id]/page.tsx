@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, use } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { ProtectedRoute } from '@/components/protected-route';
 import { Button } from '@/components/ui/button';
@@ -36,8 +36,9 @@ interface Account {
 export default function AccountDetailsPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = use(params);
   const [account, setAccount] = useState<Account | null>(null);
   const [taskers, setTaskers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -52,18 +53,16 @@ export default function AccountDetailsPage({
     if (user?.role === 'MANAGER') {
       fetchTaskers();
     }
-  }, [params.id, user]);
+  }, [id, user]);
 
   const fetchAccount = async () => {
     try {
       const endpoint = user?.role === 'MANAGER' 
-        ? `/api/accounts/${params.id}` 
+        ? `/api/accounts/${id}` 
         : `/api/accounts/my`;
       
       const response = await fetch(endpoint, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -94,14 +93,16 @@ export default function AccountDetailsPage({
   const fetchTaskers = async () => {
     try {
       const response = await fetch('/api/users', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        credentials: 'include',
       });
 
       if (response.ok) {
         const data = await response.json();
-        setTaskers(data.users.filter((u: any) => u.role === 'TASKER'));
+        const taskerUsers = data.users.filter((u: any) => u.role === 'TASKER');
+        console.log('Fetched taskers:', taskerUsers);
+        setTaskers(taskerUsers);
+      } else {
+        console.error('Failed to fetch users:', response.status);
       }
     } catch (error) {
       console.error('Failed to fetch taskers:', error);
@@ -116,8 +117,8 @@ export default function AccountDetailsPage({
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
         },
+        credentials: 'include',
         body: JSON.stringify({ isActive: !account.isActive }),
       });
 
@@ -134,24 +135,36 @@ export default function AccountDetailsPage({
   const assignTasker = async (newTaskerId: string | null) => {
     if (!account) return;
 
+    console.log('assignTasker called with:', newTaskerId);
     setIsAssigning(true);
+    setError(''); // Clear previous errors
     try {
+      const payload = { taskerId: newTaskerId ? parseInt(newTaskerId) : null };
+      console.log('Sending assignment request:', payload);
+      
       const response = await fetch(`/api/accounts/${account.id}/assign`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({ taskerId: newTaskerId }),
+        credentials: 'include',
+        body: JSON.stringify(payload),
       });
 
+      console.log('Assignment response status:', response.status);
+      
       if (!response.ok) {
-        throw new Error('Failed to assign tasker');
+        const data = await response.json();
+        console.error('Assignment failed:', data);
+        throw new Error(data.error || 'Failed to assign tasker');
       }
 
+      const result = await response.json();
+      console.log('Assignment successful:', result);
       await fetchAccount();
     } catch (error) {
-      setError('Failed to assign tasker');
+      console.error('Assignment error:', error);
+      setError(error instanceof Error ? error.message : 'Failed to assign tasker');
     } finally {
       setIsAssigning(false);
     }
@@ -321,23 +334,30 @@ export default function AccountDetailsPage({
                   {user?.role === 'MANAGER' && (
                     <div className="mt-4">
                       <h4 className="font-medium text-sm text-muted-foreground mb-2">Reassign Tasker</h4>
-                      <Select 
-                        value={account.taskerId || ''} 
-                        onValueChange={(value) => assignTasker(value || null)}
-                        disabled={isAssigning}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select a tasker" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="">Unassign</SelectItem>
-                          {taskers.map((tasker) => (
-                            <SelectItem key={tasker.id} value={tasker.id}>
-                              {tasker.fullName} ({tasker.email})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      {taskers.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No taskers available. Create a tasker user first.</p>
+                      ) : (
+                        <Select 
+                          value={account.taskerId ? String(account.taskerId) : 'unassigned'} 
+                          onValueChange={(value) => {
+                            console.log('Selected value:', value);
+                            assignTasker(value === 'unassigned' ? null : value);
+                          }}
+                          disabled={isAssigning}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a tasker" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="unassigned">Unassign</SelectItem>
+                            {taskers.map((tasker) => (
+                              <SelectItem key={tasker.id} value={String(tasker.id)}>
+                                {tasker.fullName} ({tasker.email})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
                       {isAssigning && (
                         <p className="text-sm text-muted-foreground mt-2">Assigning...</p>
                       )}

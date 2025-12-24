@@ -61,9 +61,7 @@ export default function SessionsPage() {
   const fetchAccounts = async () => {
     try {
       const response = await fetch('/api/accounts/my', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        credentials: 'include',
       });
 
       if (response.ok) {
@@ -78,9 +76,7 @@ export default function SessionsPage() {
   const fetchActiveSessions = async () => {
     try {
       const response = await fetch('/api/sessions/active', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        credentials: 'include',
       });
 
       if (response.ok) {
@@ -106,8 +102,8 @@ export default function SessionsPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
         },
+        credentials: 'include',
         body: JSON.stringify({
           accountId: selectedAccount,
         }),
@@ -135,8 +131,8 @@ export default function SessionsPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
         },
+        credentials: 'include',
         body: JSON.stringify({
           sessionId,
         }),

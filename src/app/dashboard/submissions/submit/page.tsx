@@ -51,9 +51,7 @@ export default function SubmitTaskPage() {
   const fetchAccounts = async () => {
     try {
       const response = await fetch('/api/accounts/my', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        credentials: 'include',
       });
 
       if (response.ok) {
@@ -82,8 +80,8 @@ export default function SubmitTaskPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
         },
+        credentials: 'include',
         body: JSON.stringify({
           accountId: selectedAccount,
           taskId,
