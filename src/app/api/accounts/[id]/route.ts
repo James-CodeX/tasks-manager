@@ -8,54 +8,41 @@ const updateAccountSchema = z.object({
   accountType: z.enum(['OUTLIER', 'HANDSHAKE']).optional(),
   browserType: z.enum(['IX_BROWSER', 'GOLOGIN', 'MORELOGIN']).optional(),
   hourlyRate: z.number().min(0, 'Hourly rate must be positive').optional(),
-  taskerId: z.string().nullable().optional(),
+  taskerId: z.number().nullable().optional(),
 });
 
 const assignAccountSchema = z.object({
-  taskerId: z.string().nullable(),
+  taskerId: z.number().nullable(),
 });
-
-// Middleware to check permissions
-async function checkPermissions(request: NextRequest, targetAccountId: string) {
-  const authHeader = request.headers.get('authorization');
-  
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return null;
-  }
-
-  const token = authHeader.substring(7);
-  const decoded = verifyToken(token);
-
-  // Managers have full access
-  if (decoded.role === 'MANAGER') {
-    return decoded;
-  }
-
-  // Taskers can only access their assigned accounts
-  const account = await db.account.findUnique({
-    where: { id: targetAccountId },
-  });
-
-  if (!account || account.taskerId !== decoded.userId) {
-    return null;
-  }
-
-  return decoded;
-}
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
-    const decoded = await checkPermissions(request, id);
-    
-    if (!decoded) {
+    const { id } = await params;
+    const userId = request.headers.get('x-user-id');
+    const userRole = request.headers.get('x-user-role');
+
+    if (!userId) {
       return NextResponse.json(
         { error: 'Unauthorized' },
-        { status: 403 }
+        { status: 401 }
       );
+    }
+
+    // Taskers can only access their assigned accounts
+    if (userRole === 'TASKER') {
+      const account = await db.account.findUnique({
+        where: { id },
+      });
+
+      if (!account || account.taskerId !== parseInt(userId)) {
+        return NextResponse.json(
+          { error: 'Unauthorized' },
+          { status: 403 }
+        );
+      }
     }
 
     const account = await db.account.findUnique({
@@ -97,13 +84,14 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
-    const decoded = await checkPermissions(request, id);
-    
-    if (!decoded || decoded.role !== 'MANAGER') {
+    const { id } = await params;
+    const userId = request.headers.get('x-user-id');
+    const userRole = request.headers.get('x-user-role');
+
+    if (!userId || userRole !== 'MANAGER') {
       return NextResponse.json(
         { error: 'Unauthorized - Manager role required' },
         { status: 403 }
@@ -183,7 +171,7 @@ export async function PUT(
     // Create audit log
     await db.auditLog.create({
       data: {
-        userId: decoded.userId,
+        userId: parseInt(userId),
         action: 'account_updated',
         entityType: 'account',
         entityId: id,
@@ -222,13 +210,14 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
-    const decoded = await checkPermissions(request, id);
-    
-    if (!decoded || decoded.role !== 'MANAGER') {
+    const { id } = await params;
+    const userId = request.headers.get('x-user-id');
+    const userRole = request.headers.get('x-user-role');
+
+    if (!userId || userRole !== 'MANAGER') {
       return NextResponse.json(
         { error: 'Unauthorized - Manager role required' },
         { status: 403 }
@@ -256,7 +245,7 @@ export async function DELETE(
     // Create audit log
     await db.auditLog.create({
       data: {
-        userId: decoded.userId,
+        userId: parseInt(userId),
         action: 'account_deactivated',
         entityType: 'account',
         entityId: id,

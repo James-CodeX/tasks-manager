@@ -1,39 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { verifyToken } from '@/lib/auth';
 import { z } from 'zod';
 
 const assignAccountSchema = z.object({
-  taskerId: z.string().nullable(),
+  taskerId: z.number().nullable(),
 });
-
-// Middleware to check if user is manager
-async function checkManagerRole(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return null;
-  }
-
-  const token = authHeader.substring(7);
-  const decoded = verifyToken(token);
-
-  if (decoded.role !== 'MANAGER') {
-    return null;
-  }
-
-  return decoded;
-}
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
-    const decoded = await checkManagerRole(request);
+    const { id } = await params;
+    const userId = request.headers.get('x-user-id');
+    const userRole = request.headers.get('x-user-role');
     
-    if (!decoded) {
+    if (!userId || userRole !== 'MANAGER') {
       return NextResponse.json(
         { error: 'Unauthorized - Manager role required' },
         { status: 403 }
@@ -94,7 +76,7 @@ export async function PUT(
     // Create audit log
     await db.auditLog.create({
       data: {
-        userId: decoded.userId,
+        userId: parseInt(userId),
         action: 'account_assigned',
         entityType: 'account',
         entityId: id,

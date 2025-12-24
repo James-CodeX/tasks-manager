@@ -65,9 +65,7 @@ export default function SessionHistoryPage() {
     try {
       const statusParam = filter !== 'all' ? `?status=${filter}` : '';
       const response = await fetch(`/api/sessions/my${statusParam}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        credentials: 'include',
       });
 
       if (response.ok) {

@@ -54,6 +54,7 @@ export default function GeneratePaymentPage() {
       const res = await fetch('/api/payments/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           taskerId: parseInt(formData.taskerId),
           periodStart: formData.periodStart,
