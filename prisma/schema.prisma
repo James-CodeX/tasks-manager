@@ -1,0 +1,192 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  fullName     String   @map("full_name")
+  role         UserRole
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  createdAccounts   Account[]          @relation("AccountCreator")
+  assignedAccounts  Account[]          @relation("AccountAssignee")
+  taskSubmissions   TaskSubmission[]
+  workSessions      WorkSession[]
+  paymentRecords    PaymentRecord[]
+  reviewedSubmissions TaskSubmission[] @relation("SubmissionReviewer")
+  paidPayments      PaymentRecord[]   @relation("PaymentPayer")
+  auditLogs         AuditLog[]
+
+  @@map("users")
+}
+
+model Account {
+  id           String      @id @default(cuid())
+  accountName  String      @map("account_name")
+  accountType  AccountType @map("account_type")
+  browserType  BrowserType @map("browser_type")
+  hourlyRate   Float       @map("hourly_rate")
+  taskerId     String?     @map("tasker_id")
+  isActive     Boolean     @default(true) @map("is_active")
+  createdBy    String      @map("created_by")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  // Relations
+  tasker         User?             @relation("AccountAssignee", fields: [taskerId], references: [id], onDelete: SetNull)
+  creator        User              @relation("AccountCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  taskSubmissions TaskSubmission[]
+  workSessions   WorkSession[]
+
+  @@index([taskerId])
+  @@index([accountType])
+  @@index([isActive])
+  @@index([createdBy])
+  @@index([accountType, isActive])
+  @@map("accounts")
+}
+
+model TaskSubmission {
+  id            String           @id @default(cuid())
+  accountId     String           @map("account_id")
+  taskerId      String           @map("tasker_id")
+  taskId        String           @map("task_id")
+  screenshotUrl String           @map("screenshot_url")
+  submittedAt   DateTime         @default(now()) @map("submitted_at")
+  status        SubmissionStatus @default(PENDING)
+  notes         String?
+  reviewedBy    String?          @map("reviewed_by")
+  reviewedAt    DateTime?        @map("reviewed_at")
+  createdAt     DateTime         @default(now()) @map("created_at")
+
+  // Relations
+  account  Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  tasker   User    @relation(fields: [taskerId], references: [id], onDelete: Cascade)
+  reviewer User?   @relation("SubmissionReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+
+  @@index([accountId])
+  @@index([taskerId])
+  @@index([submittedAt(sort: Desc)])
+  @@index([status])
+  @@index([accountId, submittedAt(sort: Desc)])
+  @@index([taskerId, submittedAt(sort: Desc)])
+  @@index([status, submittedAt(sort: Desc)])
+  @@map("task_submissions")
+}
+
+model WorkSession {
+  id           String    @id @default(cuid())
+  accountId    String    @map("account_id")
+  taskerId     String    @map("tasker_id")
+  startTime    DateTime  @map("start_time")
+  endTime      DateTime? @map("end_time")
+  totalHours   Float?    @map("total_hours")
+  hourlyRate   Float     @map("hourly_rate")
+  totalPayment Float?    @map("total_payment")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  tasker  User    @relation(fields: [taskerId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@index([taskerId])
+  @@index([startTime(sort: Desc)])
+  @@index([endTime])
+  @@index([taskerId, startTime(sort: Desc)])
+  @@index([accountId, endTime])
+  @@map("work_sessions")
+}
+
+model PaymentRecord {
+  id          String         @id @default(cuid())
+  taskerId    String         @map("tasker_id")
+  periodStart DateTime       @map("period_start")
+  periodEnd   DateTime       @map("period_end")
+  totalHours  Float          @map("total_hours")
+  totalAmount Float          @map("total_amount")
+  status      PaymentStatus  @default(PENDING)
+  paidAt      DateTime?      @map("paid_at")
+  paidBy      String?        @map("paid_by")
+  notes       String?
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  // Relations
+  tasker User  @relation(fields: [taskerId], references: [id], onDelete: Restrict)
+  payer  User? @relation("PaymentPayer", fields: [paidBy], references: [id], onDelete: SetNull)
+
+  @@index([taskerId])
+  @@index([periodStart])
+  @@index([periodEnd])
+  @@index([status])
+  @@index([taskerId, periodStart(sort: Desc)])
+  @@index([status, periodEnd])
+  @@unique([taskerId, periodStart, periodEnd])
+  @@map("payment_records")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?  @map("user_id")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  changes    Json?
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([createdAt(sort: Desc)])
+  @@index([action])
+  @@index([entityType])
+  @@index([entityType, entityId, createdAt(sort: Desc)])
+  @@map("audit_logs")
+}
+
+// Enums
+enum UserRole {
+  MANAGER
+  TASKER
+}
+
+enum AccountType {
+  OUTLIER
+  HANDSHAKE
+}
+
+enum BrowserType {
+  IX_BROWSER
+  GOLOGIN
+  MORELOGIN
+}
+
+enum SubmissionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  CANCELLED
+}

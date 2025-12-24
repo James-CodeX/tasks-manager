@@ -1,0 +1,290 @@
+# Database Schema Design
+
+## Overview
+This schema is designed for PostgreSQL with scalability and performance in mind. It uses proper indexing, foreign keys, and data types optimized for the use case.
+
+---
+
+## Tables
+
+### 1. users
+Stores all system users (managers and taskers)
+
+```sql
+users
+├── id (UUID, PRIMARY KEY)
+├── email (VARCHAR(255), UNIQUE, NOT NULL)
+├── password_hash (VARCHAR(255), NOT NULL)
+├── full_name (VARCHAR(255), NOT NULL)
+├── role (ENUM: 'manager', 'tasker', NOT NULL)
+├── is_active (BOOLEAN, DEFAULT true)
+├── created_at (TIMESTAMP, DEFAULT NOW())
+├── updated_at (TIMESTAMP, DEFAULT NOW())
+
+INDEXES:
+- PRIMARY KEY on id
+- UNIQUE INDEX on email
+- INDEX on role
+- INDEX on is_active
+```
+
+---
+
+### 2. accounts
+Stores work accounts (Outlier or Handshake)
+
+```sql
+accounts
+├── id (UUID, PRIMARY KEY)
+├── account_name (VARCHAR(255), NOT NULL)
+├── account_type (ENUM: 'outlier', 'handshake', NOT NULL)
+├── browser_type (ENUM: 'ix_browser', 'gologin', 'morelogin', NOT NULL)
+├── hourly_rate (DECIMAL(10,2), NOT NULL) -- Payment per hour in USD
+├── tasker_id (UUID, FOREIGN KEY -> users.id, NULLABLE)
+├── is_active (BOOLEAN, DEFAULT true)
+├── created_by (UUID, FOREIGN KEY -> users.id, NOT NULL) -- Manager who created it
+├── created_at (TIMESTAMP, DEFAULT NOW())
+├── updated_at (TIMESTAMP, DEFAULT NOW())
+
+INDEXES:
+- PRIMARY KEY on id
+- INDEX on tasker_id
+- INDEX on account_type
+- INDEX on is_active
+- INDEX on created_by
+- COMPOSITE INDEX on (account_type, is_active)
+
+CONSTRAINTS:
+- CHECK (hourly_rate >= 0)
+- FOREIGN KEY tasker_id REFERENCES users(id) ON DELETE SET NULL
+- FOREIGN KEY created_by REFERENCES users(id) ON DELETE RESTRICT
+```
+
+---
+
+### 3. task_submissions
+Stores hourly task submissions for Handshake accounts
+
+```sql
+task_submissions
+├── id (UUID, PRIMARY KEY)
+├── account_id (UUID, FOREIGN KEY -> accounts.id, NOT NULL)
+├── tasker_id (UUID, FOREIGN KEY -> users.id, NOT NULL)
+├── task_id (VARCHAR(255), NOT NULL) -- External task identifier
+├── screenshot_url (TEXT, NOT NULL) -- S3/Cloud storage URL
+├── submitted_at (TIMESTAMP, DEFAULT NOW(), NOT NULL)
+├── status (ENUM: 'pending', 'approved', 'rejected', DEFAULT 'pending')
+├── notes (TEXT, NULLABLE) -- Manager notes/feedback
+├── reviewed_by (UUID, FOREIGN KEY -> users.id, NULLABLE)
+├── reviewed_at (TIMESTAMP, NULLABLE)
+├── created_at (TIMESTAMP, DEFAULT NOW())
+
+INDEXES:
+- PRIMARY KEY on id
+- INDEX on account_id
+- INDEX on tasker_id
+- INDEX on submitted_at DESC
+- INDEX on status
+- COMPOSITE INDEX on (account_id, submitted_at DESC)
+- COMPOSITE INDEX on (tasker_id, submitted_at DESC)
+- COMPOSITE INDEX on (status, submitted_at DESC)
+
+CONSTRAINTS:
+- FOREIGN KEY account_id REFERENCES accounts(id) ON DELETE CASCADE
+- FOREIGN KEY tasker_id REFERENCES users(id) ON DELETE CASCADE
+- FOREIGN KEY reviewed_by REFERENCES users(id) ON DELETE SET NULL
+```
+
+---
+
+### 4. work_sessions
+Tracks work periods for payment calculation
+
+```sql
+work_sessions
+├── id (UUID, PRIMARY KEY)
+├── account_id (UUID, FOREIGN KEY -> accounts.id, NOT NULL)
+├── tasker_id (UUID, FOREIGN KEY -> users.id, NOT NULL)
+├── start_time (TIMESTAMP, NOT NULL)
+├── end_time (TIMESTAMP, NULLABLE) -- NULL means session is active
+├── total_hours (DECIMAL(10,2), NULLABLE) -- Calculated on end
+├── hourly_rate (DECIMAL(10,2), NOT NULL) -- Snapshot of rate at session start
+├── total_payment (DECIMAL(10,2), NULLABLE) -- Calculated on end
+├── created_at (TIMESTAMP, DEFAULT NOW())
+├── updated_at (TIMESTAMP, DEFAULT NOW())
+
+INDEXES:
+- PRIMARY KEY on id
+- INDEX on account_id
+- INDEX on tasker_id
+- INDEX on start_time DESC
+- INDEX on end_time
+- COMPOSITE INDEX on (tasker_id, start_time DESC)
+- COMPOSITE INDEX on (account_id, end_time) -- For active sessions
+
+CONSTRAINTS:
+- CHECK (end_time IS NULL OR end_time > start_time)
+- CHECK (total_hours IS NULL OR total_hours >= 0)
+- CHECK (hourly_rate >= 0)
+- CHECK (total_payment IS NULL OR total_payment >= 0)
+- FOREIGN KEY account_id REFERENCES accounts(id) ON DELETE CASCADE
+- FOREIGN KEY tasker_id REFERENCES users(id) ON DELETE CASCADE
+```
+
+---
+
+### 5. payment_records
+Aggregated payment records for payroll
+
+```sql
+payment_records
+├── id (UUID, PRIMARY KEY)
+├── tasker_id (UUID, FOREIGN KEY -> users.id, NOT NULL)
+├── period_start (DATE, NOT NULL)
+├── period_end (DATE, NOT NULL)
+├── total_hours (DECIMAL(10,2), NOT NULL)
+├── total_amount (DECIMAL(10,2), NOT NULL)
+├── status (ENUM: 'pending', 'paid', 'cancelled', DEFAULT 'pending')
+├── paid_at (TIMESTAMP, NULLABLE)
+├── paid_by (UUID, FOREIGN KEY -> users.id, NULLABLE)
+├── notes (TEXT, NULLABLE)
+├── created_at (TIMESTAMP, DEFAULT NOW())
+├── updated_at (TIMESTAMP, DEFAULT NOW())
+
+INDEXES:
+- PRIMARY KEY on id
+- INDEX on tasker_id
+- INDEX on period_start
+- INDEX on period_end
+- INDEX on status
+- COMPOSITE INDEX on (tasker_id, period_start DESC)
+- COMPOSITE INDEX on (status, period_end)
+
+CONSTRAINTS:
+- CHECK (period_end >= period_start)
+- CHECK (total_hours >= 0)
+- CHECK (total_amount >= 0)
+- FOREIGN KEY tasker_id REFERENCES users(id) ON DELETE RESTRICT
+- FOREIGN KEY paid_by REFERENCES users(id) ON DELETE SET NULL
+- UNIQUE (tasker_id, period_start, period_end) -- Prevent duplicate periods
+```
+
+---
+
+### 6. audit_logs
+Track all important system actions for compliance
+
+```sql
+audit_logs
+├── id (UUID, PRIMARY KEY)
+├── user_id (UUID, FOREIGN KEY -> users.id, NULLABLE)
+├── action (VARCHAR(100), NOT NULL) -- e.g., 'account_created', 'task_submitted'
+├── entity_type (VARCHAR(50), NOT NULL) -- e.g., 'account', 'task_submission'
+├── entity_id (UUID, NOT NULL)
+├── changes (JSONB, NULLABLE) -- Store before/after for updates
+├── ip_address (INET, NULLABLE)
+├── user_agent (TEXT, NULLABLE)
+├── created_at (TIMESTAMP, DEFAULT NOW())
+
+INDEXES:
+- PRIMARY KEY on id
+- INDEX on user_id
+- INDEX on created_at DESC
+- INDEX on action
+- INDEX on entity_type
+- COMPOSITE INDEX on (entity_type, entity_id, created_at DESC)
+- GIN INDEX on changes (for JSONB queries)
+
+CONSTRAINTS:
+- FOREIGN KEY user_id REFERENCES users(id) ON DELETE SET NULL
+```
+
+---
+
+## Enums Definition
+
+```sql
+CREATE TYPE user_role AS ENUM ('manager', 'tasker');
+CREATE TYPE account_type AS ENUM ('outlier', 'handshake');
+CREATE TYPE browser_type AS ENUM ('ix_browser', 'gologin', 'morelogin');
+CREATE TYPE submission_status AS ENUM ('pending', 'approved', 'rejected');
+CREATE TYPE payment_status AS ENUM ('pending', 'paid', 'cancelled');
+```
+
+---
+
+## Key Design Decisions
+
+### 1. UUID vs Auto-increment IDs
+- **Choice**: UUID
+- **Reason**: Better for distributed systems, prevents ID guessing, easier merging of data
+
+### 2. Soft Deletes
+- **Implementation**: `is_active` flags instead of actual deletion
+- **Reason**: Maintain data integrity and audit trail
+
+### 3. Denormalization
+- **hourly_rate in work_sessions**: Snapshot prevents historical data corruption if rates change
+- **Reason**: Historical accuracy for payments
+
+### 4. JSONB for audit_logs
+- **Flexible storage** for different types of changes
+- **Indexed** for efficient querying
+
+### 5. Timestamp Strategy
+- All timestamps in UTC
+- Application layer handles timezone conversion
+
+---
+
+## Scalability Considerations
+
+### Partitioning Strategy (for future)
+```sql
+-- Partition task_submissions by month
+-- Partition audit_logs by quarter
+-- This keeps active data hot and old data archived
+```
+
+### Read Replicas
+- Primary database for writes
+- Read replicas for reporting and analytics
+- `work_sessions` and `task_submissions` are read-heavy
+
+### Caching Strategy
+- Cache active accounts by tasker
+- Cache user sessions
+- Cache hourly rates (rarely change)
+
+---
+
+## Sample Queries
+
+### Get all pending Handshake submissions for an account
+```sql
+SELECT * FROM task_submissions 
+WHERE account_id = ? 
+  AND status = 'pending' 
+ORDER BY submitted_at DESC;
+```
+
+### Calculate total hours worked by tasker in a period
+```sql
+SELECT 
+  tasker_id,
+  SUM(total_hours) as total_hours,
+  SUM(total_payment) as total_payment
+FROM work_sessions
+WHERE tasker_id = ?
+  AND start_time >= ?
+  AND end_time <= ?
+  AND end_time IS NOT NULL
+GROUP BY tasker_id;
+```
+
+### Get active work sessions
+```sql
+SELECT * FROM work_sessions 
+WHERE end_time IS NULL 
+  AND tasker_id = ?;
+```
