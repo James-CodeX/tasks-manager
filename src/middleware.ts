@@ -21,9 +21,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Check for auth token
-  const authHeader = request.headers.get('authorization');
-  const token = authHeader?.replace('Bearer ', '');
+  // Check for auth token in cookies
+  const token = request.cookies.get('token')?.value;
 
   if (!token && path.startsWith('/api/')) {
     return NextResponse.json(
@@ -38,7 +37,7 @@ export async function middleware(request: NextRequest) {
       
       // Clone the request headers and add user info
       const requestHeaders = new Headers(request.headers);
-      requestHeaders.set('x-user-id', payload.userId as string);
+      requestHeaders.set('x-user-id', String(payload.userId));
       requestHeaders.set('x-user-role', payload.role as string);
 
       return NextResponse.next({

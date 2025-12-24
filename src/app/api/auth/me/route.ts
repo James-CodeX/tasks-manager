@@ -4,21 +4,18 @@ import { verifyToken } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('authorization');
+    const userId = request.headers.get('x-user-id');
     
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!userId) {
       return NextResponse.json(
-        { error: 'No token provided' },
+        { error: 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    const token = authHeader.substring(7);
-    const decoded = verifyToken(token);
-
     // Get user from database
     const user = await db.user.findUnique({
-      where: { id: decoded.userId },
+      where: { id: parseInt(userId) },
       select: {
         id: true,
         email: true,

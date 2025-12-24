@@ -30,36 +30,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for existing token on mount
-    const storedToken = localStorage.getItem('auth_token');
-    if (storedToken) {
-      setToken(storedToken);
-      verifyToken(storedToken);
-    } else {
-      setIsLoading(false);
-    }
+    // Try to verify authentication on mount using cookies
+    verifyAuth();
   }, []);
 
-  const verifyToken = async (token: string) => {
+  const verifyAuth = async () => {
     try {
       const response = await fetch('/api/auth/me', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        credentials: 'include', // Important for sending cookies
       });
 
       if (response.ok) {
         const data = await response.json();
         setUser(data.user);
-      } else {
-        console.error('Token verification failed:', response.status, response.statusText);
-        localStorage.removeItem('auth_token');
-        setToken(null);
       }
     } catch (error) {
-      console.error('Token verification error:', error);
-      localStorage.removeItem('auth_token');
-      setToken(null);
+      console.error('Auth verification error:', error);
     } finally {
       setIsLoading(false);
     }
@@ -73,14 +59,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ email, password }),
+        credentials: 'include', // Important for cookies
       });
 
       const data = await response.json();
 
       if (response.ok) {
         setUser(data.user);
-        setToken(data.token);
-        localStorage.setItem('auth_token', data.token);
+        setToken(data.token); // Keep for compatibility
         return { success: true };
       } else {
         return { success: false, error: data.error };
@@ -104,14 +90,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ email, password, fullName, role }),
+        credentials: 'include',
       });
 
       const data = await response.json();
 
       if (response.ok) {
         setUser(data.user);
-        setToken(data.token);
-        localStorage.setItem('auth_token', data.token);
+        setToken(data.token); // Keep for compatibility
         return { success: true };
       } else {
         return { success: false, error: data.error };
@@ -125,7 +111,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     setUser(null);
     setToken(null);
-    localStorage.removeItem('auth_token');
+    // Cookie will be cleared by server on logout endpoint
+    // For now, just clear client state
   };
 
   return (

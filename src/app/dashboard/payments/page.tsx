@@ -46,7 +46,7 @@ export default function PaymentsPage() {
     paidAmount: 0,
   });
   const [filters, setFilters] = useState({
-    status: '',
+    status: 'all',
     startDate: '',
     endDate: '',
   });
@@ -71,7 +71,7 @@ export default function PaymentsPage() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (filters.status) params.append('status', filters.status);
+      if (filters.status && filters.status !== 'all') params.append('status', filters.status);
       if (filters.startDate) params.append('startDate', filters.startDate);
       if (filters.endDate) params.append('endDate', filters.endDate);
 
@@ -94,7 +94,7 @@ export default function PaymentsPage() {
   const handleExport = async () => {
     try {
       const params = new URLSearchParams();
-      if (filters.status) params.append('status', filters.status);
+      if (filters.status && filters.status !== 'all') params.append('status', filters.status);
       if (filters.startDate) params.append('startDate', filters.startDate);
       if (filters.endDate) params.append('endDate', filters.endDate);
 
@@ -117,6 +117,7 @@ export default function PaymentsPage() {
     try {
       const res = await fetch(`/api/payments/${id}/mark-paid`, {
         method: 'PUT',
+        credentials: 'include',
       });
       if (res.ok) {
         fetchPayments();
@@ -167,7 +168,7 @@ export default function PaymentsPage() {
                   <SelectValue placeholder="All statuses" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All statuses</SelectItem>
+                  <SelectItem value="all">All statuses</SelectItem>
                   <SelectItem value="PENDING">Pending</SelectItem>
                   <SelectItem value="PAID">Paid</SelectItem>
                   <SelectItem value="CANCELLED">Cancelled</SelectItem>

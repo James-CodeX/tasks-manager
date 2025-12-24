@@ -1,30 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { verifyToken } from '@/lib/auth';
-
-// Middleware to check if user is tasker
-async function checkTaskerRole(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return null;
-  }
-
-  const token = authHeader.substring(7);
-  const decoded = verifyToken(token);
-
-  if (decoded.role !== 'TASKER') {
-    return null;
-  }
-
-  return decoded;
-}
 
 export async function GET(request: NextRequest) {
   try {
-    const decoded = await checkTaskerRole(request);
-    
-    if (!decoded) {
+    const userId = request.headers.get('x-user-id');
+    const userRole = request.headers.get('x-user-role');
+
+    if (!userId || userRole !== 'TASKER') {
       return NextResponse.json(
         { error: 'Unauthorized - Tasker role required' },
         { status: 403 }
@@ -38,7 +20,7 @@ export async function GET(request: NextRequest) {
 
     // Build where clause - taskers can only see their assigned accounts
     const where: any = {
-      taskerId: decoded.userId,
+      taskerId: parseInt(userId),
       isActive: true,
     };
     

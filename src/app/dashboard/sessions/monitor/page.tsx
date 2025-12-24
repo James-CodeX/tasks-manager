@@ -80,9 +80,7 @@ export default function SessionMonitorPage() {
   const fetchActiveSessions = async () => {
     try {
       const response = await fetch('/api/sessions/active', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        credentials: 'include',
       });
 
       if (response.ok) {
@@ -97,9 +95,7 @@ export default function SessionMonitorPage() {
   const fetchRecentSessions = async () => {
     try {
       const response = await fetch('/api/sessions?status=completed', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        credentials: 'include',
       });
 
       if (response.ok) {
